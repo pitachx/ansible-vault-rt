@@ -3,6 +3,7 @@
   "displayName": "Ansible Vault RT",
   "description": "Real-time editing of Ansible Vault files in VS Code / Antigravity IDE",
   "version": "0.1.1",
+  "license": "MIT",
   "publisher": "BerS",
   "repository": {
     "type": "git",
