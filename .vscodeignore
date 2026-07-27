@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+.agents/**
+src/**
+out/**/*.map
+tsconfig.json
+package-lock.json
+.gitignore
+.editorconfig
+**/*.vsix
+test_ansible_vault.yaml
+test_ansible_vault_non_yaml.sh
+**/.git/**
+**/.DS_Store

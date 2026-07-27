@@ -1,0 +1,86 @@
+{
+  "name": "ansible-vault-rt",
+  "displayName": "Ansible Vault RT",
+  "description": "Real-time editing of Ansible Vault files in VS Code / Antigravity IDE",
+  "version": "0.1.1",
+  "publisher": "BerS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pitachx/ansible-vault-rt.git"
+  },
+  "homepage": "https://github.com/pitachx/ansible-vault-rt",
+  "bugs": {
+    "url": "https://github.com/pitachx/ansible-vault-rt/issues"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ansible-vault-rt.editVaultFile",
+        "title": "Ansible Vault RT: Edit Vault File",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "ansible-vault-rt.showEncryptedFile",
+        "title": "Ansible Vault RT: Show Encrypted File",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "ansible-vault-rt.clearSavedPassword",
+        "title": "Ansible Vault RT: Clear Saved Password",
+        "icon": "$(trash)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ansible-vault-rt.editVaultFile",
+          "when": "resourceScheme == file && ansibleVaultRt:isVaultFile",
+          "group": "navigation"
+        },
+        {
+          "command": "ansible-vault-rt.showEncryptedFile",
+          "when": "resourceScheme == ansible-vault-rt",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ansible-vault-rt.editVaultFile",
+          "when": "resourceScheme == file && ansibleVaultRt:isVaultFile",
+          "group": "1_modification"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ansible-vault-rt.editVaultFile",
+          "when": "resourceScheme == file && !explorerResourceIsFolder && ansibleVaultRt:isVaultFile",
+          "group": "2_workspace"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile"
+  },
+  "dependencies": {
+    "ansible-vault": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.11.18",
+    "typescript": "^5.0.4"
+  }
+}
