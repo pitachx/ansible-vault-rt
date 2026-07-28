@@ -59,12 +59,3 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 3. Open Extensions view (`Cmd+Shift+X`).
 4. Click the `...` menu in the top right of Extensions view and select **Install from VSIX...**.
 5. Select the downloaded `ansible-vault-rt-X.Y.Z.vsix`.
-
----
-
-## CI and releases
-
-- **Feature branches / PRs**: security checks run (CodeQL, `npm audit`, Dependency Review on PRs). No `.vsix` is built.
-- **Merge to `main`**: CI installs with `npm ci` (lockfile), packages the extension with `@vscode/vsce`, and creates a GitHub Release named after the lockfile version (e.g. `0.1.1`, no `v` prefix) if that release does not already exist.
-
-To cut a release: bump `version` in `package.json`, run `npm install` to sync `package-lock.json`, open a PR, and merge to `main`.
