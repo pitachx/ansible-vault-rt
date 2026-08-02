@@ -201,8 +201,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(editVaultCommand);
 
   // Register command to close decrypted vault and return to raw encrypted file
-  const showEncryptedCommand = vscode.commands.registerCommand(
-    'ansible-vault-rt.showEncryptedFile',
+  const closeDecryptedFileCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.closeDecryptedFile',
     async (uri?: vscode.Uri) => {
       let targetUri = uri || vscode.window.activeTextEditor?.document.uri;
       if (!targetUri || targetUri.scheme !== 'ansible-vault-rt') {
@@ -227,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  context.subscriptions.push(showEncryptedCommand);
+  context.subscriptions.push(closeDecryptedFileCommand);
 
   // Register command to clear saved vault password for current project
   const clearPasswordCommand = vscode.commands.registerCommand(
@@ -266,6 +266,180 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(clearPasswordCommand);
+
+  // Register command to encrypt a plaintext file in place on disk
+  const encryptFileCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.encryptFile',
+    async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+
+      if (!targetUri || targetUri.scheme !== 'file') {
+        vscode.window.showWarningMessage('Please open or select a local file to encrypt.');
+        return;
+      }
+
+      const fileName = targetUri.fsPath.split(/[\\/]/).pop() || targetUri.fsPath;
+
+      try {
+        const fileContent = await fs.promises.readFile(targetUri.fsPath, 'utf8');
+
+        if (isAnsibleVaultContent(fileContent)) {
+          vscode.window.showInformationMessage(`"${fileName}" is already encrypted with Ansible Vault.`);
+          return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Do you really want to encrypt "${fileName}" with Ansible Vault?`,
+          { modal: true },
+          'Encrypt'
+        );
+        if (confirm !== 'Encrypt') {
+          return;
+        }
+
+        const projectPath = passwordManager.getProjectPath(targetUri);
+        const projectName = projectPath.split('/').pop() || projectPath;
+
+        let password = await passwordManager.getSavedPassword(projectPath);
+        if (password) {
+          vscode.window.showInformationMessage(`Using saved Ansible Vault password for project "${projectName}".`);
+        } else {
+          const result = await showPasswordDialog(
+            'Enter Password to encrypt this file with Ansible Vault',
+            projectName
+          );
+          if (!result) {
+            return; // User cancelled
+          }
+
+          password = result.password;
+          if (result.remember) {
+            await passwordManager.savePassword(projectPath, password);
+          }
+        }
+
+        const vault = new Vault({ password });
+        const encryptedContent = vault.encryptSync(fileContent);
+        await fs.promises.writeFile(targetUri.fsPath, encryptedContent, 'utf8');
+
+        vscode.window.showInformationMessage(`"${fileName}" has been encrypted with Ansible Vault.`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`An error occurred while encrypting the file: ${err.message}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(encryptFileCommand);
+
+  // Register command to decrypt a vault file in place on disk
+  const decryptFileCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.decryptFile',
+    async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+
+      if (!targetUri || targetUri.scheme !== 'file') {
+        vscode.window.showWarningMessage('Please open or select a local file to decrypt.');
+        return;
+      }
+
+      const fileName = targetUri.fsPath.split(/[\\/]/).pop() || targetUri.fsPath;
+
+      try {
+        const fileContent = await fs.promises.readFile(targetUri.fsPath, 'utf8');
+
+        if (!isAnsibleVaultContent(fileContent)) {
+          vscode.window.showInformationMessage(`"${fileName}" is not encrypted with Ansible Vault.`);
+          return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Do you really want to decrypt "${fileName}"? This permanently removes Ansible Vault encryption from the file on disk.`,
+          { modal: true },
+          'Decrypt'
+        );
+        if (confirm !== 'Decrypt') {
+          return;
+        }
+
+        const projectPath = passwordManager.getProjectPath(targetUri);
+        const projectName = projectPath.split('/').pop() || projectPath;
+
+        let password = await passwordManager.getSavedPassword(projectPath);
+        let decryptedContent: string | undefined;
+
+        if (password) {
+          try {
+            const vault = new Vault({ password });
+            decryptedContent = vault.decryptSync(fileContent);
+            vscode.window.showInformationMessage(`Using saved Ansible Vault password for project "${projectName}".`);
+          } catch (err: any) {
+            // Saved password failed to decrypt the file
+            const choice = await vscode.window.showErrorMessage(
+              `Saved Ansible Vault password for project "${projectName}" is invalid.`,
+              'Enter New Password',
+              'Delete Saved Password'
+            );
+
+            if (choice === 'Delete Saved Password') {
+              await passwordManager.deletePassword(projectPath);
+              vscode.window.showInformationMessage(`Saved password for project "${projectName}" has been deleted.`);
+              return;
+            } else if (choice === 'Enter New Password') {
+              password = undefined;
+            } else {
+              return; // User cancelled
+            }
+          }
+        }
+
+        let errorMessage: string | undefined = undefined;
+
+        while (decryptedContent === undefined) {
+          const result = await showPasswordDialog(
+            'Enter Ansible Vault Password to decrypt file',
+            projectName,
+            errorMessage
+          );
+
+          if (!result) {
+            return; // User cancelled modal
+          }
+
+          try {
+            const vault = new Vault({ password: result.password });
+            decryptedContent = vault.decryptSync(fileContent);
+            password = result.password;
+
+            if (result.remember) {
+              await passwordManager.savePassword(projectPath, password);
+            }
+          } catch (err: any) {
+            errorMessage = 'Invalid password or corrupted vault file. Please try again.';
+          }
+        }
+
+        await fs.promises.writeFile(targetUri.fsPath, decryptedContent, 'utf8');
+
+        vscode.window.showInformationMessage(`"${fileName}" has been decrypted.`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`An error occurred while decrypting the file: ${err.message}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(decryptFileCommand);
 
   // Unregister documents from memory when their editor tabs are closed
   context.subscriptions.push(

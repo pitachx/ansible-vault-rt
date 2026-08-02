@@ -13,6 +13,7 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 - 🛠️ **Seamless Error Recovery**:
   - Prompts to update or delete saved passwords if the stored password becomes invalid.
 - ⚡ **Multi-Location Menu Integration**: Easily trigger vault editing from editor title bar buttons, editor context menus, File Explorer context menus, or Command Palette.
+- 🔒 **One-Click Encrypt / Decrypt In Place**: Right-click any file to encrypt it, or any Vault file to decrypt it, directly on disk (no need to open it first).
 
 ---
 
@@ -21,8 +22,10 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 | Command | Description | Shortcut / Menu Location |
 | :--- | :--- | :--- |
 | `ansible-vault-rt.editVaultFile` | **Ansible Vault RT: Edit Vault File**<br>Decrypts and opens the file in a virtual editor tab (or prompts to encrypt plaintext files). | • Editor Title bar (`🔒` icon)<br>• Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
-| `ansible-vault-rt.showEncryptedFile` | **Ansible Vault RT: Show Encrypted File**<br>Closes decrypted virtual view and returns to the raw encrypted file on disk. | • Editor Title bar (`🔓` open lock icon when viewing decrypted tab)<br>• Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.closeDecryptedFile` | **Ansible Vault RT: Close Decrypted File**<br>Closes decrypted virtual view and returns to the raw encrypted file on disk. | • Editor Title bar (`🔓` open lock icon when viewing decrypted tab)<br>• Command Palette (`Cmd+Shift+P`) |
 | `ansible-vault-rt.clearSavedPassword` | **Ansible Vault RT: Clear Saved Password**<br>Deletes the saved password for the current project from OS Keychain. | • Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.encryptFile` | **Ansible Vault RT: Encrypt File**<br>Encrypts any plaintext file in place on disk with Ansible Vault, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.decryptFile` | **Ansible Vault RT: Decrypt File**<br>Decrypts a Vault file in place on disk, permanently removing the encryption, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
 
 ![Command Palette — Ansible Vault RT commands](docs/images/command-palette.png)
 
@@ -49,6 +52,14 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 ### 3. Clearing / Updating Saved Passwords
 - **To delete a saved password**: Open Command Palette (`Cmd+Shift+P`) and execute `Ansible Vault RT: Clear Saved Password`.
 - **If a saved password fails**: A dialog will prompt you to either `"Enter New Password"` (to update/overwrite) or `"Delete Saved Password"`.
+
+### 4. Encrypting / Decrypting a File In Place
+Unlike **Edit Vault File** (which keeps the file encrypted on disk and only decrypts it into a virtual tab), **Encrypt File** / **Decrypt File** permanently change the file on disk:
+
+1. Right-click a plaintext file and select **Ansible Vault RT: Encrypt File** (or a Vault file and select **Ansible Vault RT: Decrypt File**).
+2. Confirm the action in the warning dialog.
+3. If a password is already saved for the project, it's reused automatically (you'll be notified). Otherwise you'll be prompted for one, with the option to save it.
+4. The file is encrypted/decrypted and overwritten on disk.
 
 ---
 
