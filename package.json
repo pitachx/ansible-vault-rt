@@ -2,7 +2,7 @@
   "name": "ansible-vault-rt",
   "displayName": "Ansible Vault RT",
   "description": "Real-time editing of Ansible Vault files in VS Code / Antigravity IDE",
-  "version": "0.1.4",
+  "version": "0.2.1",
   "license": "MIT",
   "publisher": "AlexBerS",
   "repository": {
@@ -31,14 +31,24 @@
         "icon": "$(lock)"
       },
       {
-        "command": "ansible-vault-rt.showEncryptedFile",
-        "title": "Ansible Vault RT: Show Encrypted File",
+        "command": "ansible-vault-rt.closeDecryptedFile",
+        "title": "Ansible Vault RT: Close Decrypted File",
         "icon": "$(unlock)"
       },
       {
         "command": "ansible-vault-rt.clearSavedPassword",
         "title": "Ansible Vault RT: Clear Saved Password",
         "icon": "$(trash)"
+      },
+      {
+        "command": "ansible-vault-rt.encryptFile",
+        "title": "Ansible Vault RT: Encrypt File",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "ansible-vault-rt.decryptFile",
+        "title": "Ansible Vault RT: Decrypt File",
+        "icon": "$(unlock)"
       }
     ],
     "menus": {
@@ -49,7 +59,7 @@
           "group": "navigation"
         },
         {
-          "command": "ansible-vault-rt.showEncryptedFile",
+          "command": "ansible-vault-rt.closeDecryptedFile",
           "when": "resourceScheme == ansible-vault-rt",
           "group": "navigation"
         }
@@ -59,11 +69,31 @@
           "command": "ansible-vault-rt.editVaultFile",
           "when": "resourceScheme == file && ansibleVaultRt:isVaultFile",
           "group": "1_modification"
+        },
+        {
+          "command": "ansible-vault-rt.encryptFile",
+          "when": "resourceScheme == file && !ansibleVaultRt:isVaultFile",
+          "group": "1_modification"
+        },
+        {
+          "command": "ansible-vault-rt.decryptFile",
+          "when": "resourceScheme == file && ansibleVaultRt:isVaultFile",
+          "group": "1_modification"
         }
       ],
       "explorer/context": [
         {
           "command": "ansible-vault-rt.editVaultFile",
+          "when": "resourceScheme == file && !explorerResourceIsFolder && ansibleVaultRt:isVaultFile",
+          "group": "2_workspace"
+        },
+        {
+          "command": "ansible-vault-rt.encryptFile",
+          "when": "resourceScheme == file && !explorerResourceIsFolder && !ansibleVaultRt:isVaultFile",
+          "group": "2_workspace"
+        },
+        {
+          "command": "ansible-vault-rt.decryptFile",
           "when": "resourceScheme == file && !explorerResourceIsFolder && ansibleVaultRt:isVaultFile",
           "group": "2_workspace"
         }
