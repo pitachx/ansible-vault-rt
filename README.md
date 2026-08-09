@@ -26,6 +26,7 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 | `ansible-vault-rt.clearSavedPassword` | **Ansible Vault RT: Clear Saved Password**<br>Deletes the saved password for the current project from OS Keychain. | • Command Palette (`Cmd+Shift+P`) |
 | `ansible-vault-rt.encryptFile` | **Ansible Vault RT: Encrypt File**<br>Encrypts any plaintext file in place on disk with Ansible Vault, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
 | `ansible-vault-rt.decryptFile` | **Ansible Vault RT: Decrypt File**<br>Decrypts a Vault file in place on disk, permanently removing the encryption, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.rekeyFile` | **Ansible Vault RT: Rekey File**<br>Changes the password of a Vault file in place on disk: decrypts it with the current password, then re-encrypts it with a new one. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
 
 ![Command Palette — Ansible Vault RT commands](docs/images/command-palette.png)
 
@@ -60,6 +61,14 @@ Unlike **Edit Vault File** (which keeps the file encrypted on disk and only decr
 2. Confirm the action in the warning dialog.
 3. If a password is already saved for the project, it's reused automatically (you'll be notified). Otherwise you'll be prompted for one, with the option to save it.
 4. The file is encrypted/decrypted and overwritten on disk.
+
+### 5. Changing a Vault File's Password (Rekey)
+1. Right-click a Vault file and select **Ansible Vault RT: Rekey File**.
+2. Confirm the action in the warning dialog.
+3. If a password is already saved for the project, it's reused automatically to decrypt the file (you'll be notified), and you're only prompted once, for the new password.
+4. Otherwise, a single dialog asks for both the **current** and **new** password together. If the current password is wrong, the same dialog stays open and shows an inline error so you can retry without reopening it.
+5. Optionally save the new password for the project (this overwrites any previously saved password).
+6. The file is re-encrypted with the new password and overwritten on disk.
 
 ---
 

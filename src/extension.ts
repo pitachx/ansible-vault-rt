@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { Vault } from 'ansible-vault';
 import { VaultFileSystemProvider } from './vaultFileSystemProvider';
 import { PasswordManager } from './passwordManager';
-import { showPasswordDialog } from './passwordDialog';
+import { showPasswordDialog, showRekeyPasswordDialog } from './passwordDialog';
 import { isAnsibleVaultContent } from './vaultFileUtils';
 
 async function updateVaultFileContext(document?: vscode.TextDocument): Promise<void> {
@@ -440,6 +440,135 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(decryptFileCommand);
+
+  // Register command to change the password of a vault file in place on disk
+  const rekeyFileCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.rekeyFile',
+    async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+
+      if (!targetUri || targetUri.scheme !== 'file') {
+        vscode.window.showWarningMessage('Please open or select a local file to rekey.');
+        return;
+      }
+
+      const fileName = targetUri.fsPath.split(/[\\/]/).pop() || targetUri.fsPath;
+
+      try {
+        const fileContent = await fs.promises.readFile(targetUri.fsPath, 'utf8');
+
+        if (!isAnsibleVaultContent(fileContent)) {
+          vscode.window.showInformationMessage(`"${fileName}" is not encrypted with Ansible Vault.`);
+          return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Do you really want to change the password of "${fileName}"?`,
+          { modal: true },
+          'Rekey'
+        );
+        if (confirm !== 'Rekey') {
+          return;
+        }
+
+        const projectPath = passwordManager.getProjectPath(targetUri);
+        const projectName = projectPath.split('/').pop() || projectPath;
+
+        // Resolve the current password and decrypt the file with it first
+        let oldPassword = await passwordManager.getSavedPassword(projectPath);
+        let decryptedContent: string | undefined;
+
+        if (oldPassword) {
+          try {
+            const vault = new Vault({ password: oldPassword });
+            decryptedContent = vault.decryptSync(fileContent);
+            vscode.window.showInformationMessage(`Using saved Ansible Vault password for project "${projectName}".`);
+          } catch (err: any) {
+            // Saved password failed to decrypt the file
+            const choice = await vscode.window.showErrorMessage(
+              `Saved Ansible Vault password for project "${projectName}" is invalid.`,
+              'Enter New Password',
+              'Delete Saved Password'
+            );
+
+            if (choice === 'Delete Saved Password') {
+              await passwordManager.deletePassword(projectPath);
+              vscode.window.showInformationMessage(`Saved password for project "${projectName}" has been deleted.`);
+              return;
+            } else if (choice === 'Enter New Password') {
+              oldPassword = undefined;
+            } else {
+              return; // User cancelled
+            }
+          }
+        }
+
+        let newPassword: string;
+        let remember: boolean;
+
+        if (decryptedContent !== undefined) {
+          // The current password is already known (from the saved project
+          // password), so only the new password needs to be collected.
+          const newPasswordResult = await showPasswordDialog(
+            'Enter New Password to rekey this file',
+            projectName
+          );
+
+          if (!newPasswordResult) {
+            return; // User cancelled modal
+          }
+
+          newPassword = newPasswordResult.password;
+          remember = newPasswordResult.remember;
+        } else {
+          // The current password isn't known yet: collect both the current
+          // and new password in a single dialog, validating the current
+          // password in place (the panel stays open and shows an inline
+          // error on a wrong password, rather than closing and reopening).
+          const rekeyResult = await showRekeyPasswordDialog(projectName, async (candidatePassword) => {
+            try {
+              const vault = new Vault({ password: candidatePassword });
+              decryptedContent = vault.decryptSync(fileContent);
+              return { success: true };
+            } catch {
+              return { success: false, errorMessage: 'Invalid password or corrupted vault file. Please try again.' };
+            }
+          });
+
+          if (!rekeyResult) {
+            return; // User cancelled modal
+          }
+
+          newPassword = rekeyResult.newPassword;
+          remember = rekeyResult.remember;
+        }
+
+        if (decryptedContent === undefined) {
+          return;
+        }
+
+        const vault = new Vault({ password: newPassword });
+        const encryptedContent = vault.encryptSync(decryptedContent);
+        await fs.promises.writeFile(targetUri.fsPath, encryptedContent, 'utf8');
+
+        if (remember) {
+          await passwordManager.savePassword(projectPath, newPassword);
+        }
+
+        vscode.window.showInformationMessage(`"${fileName}" has been rekeyed with a new Ansible Vault password.`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`An error occurred while rekeying the file: ${err.message}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(rekeyFileCommand);
 
   // Unregister documents from memory when their editor tabs are closed
   context.subscriptions.push(
