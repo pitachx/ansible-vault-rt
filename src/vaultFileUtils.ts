@@ -38,3 +38,73 @@ export function isAnsibleVaultContent(content: string): boolean {
 
   return true;
 }
+
+const VAULT_ENVELOPE_DETECTION_PATTERN = /\$ANSIBLE_VAULT;\d+\.\d+;[A-Za-z0-9_\-]+/;
+
+/**
+ * Lightweight check for whether `text` contains an Ansible Vault envelope
+ * header, used to decide whether to surface the "Decrypt String" menu entry
+ * for a given selection. Cheaper than `parseVaultBlock`, and doesn't throw.
+ */
+export function containsVaultEnvelope(text: string): boolean {
+  return VAULT_ENVELOPE_DETECTION_PATTERN.test(text);
+}
+
+export interface ParsedVaultBlock {
+  variableName?: string;
+  envelope: string;
+}
+
+const NAMED_VAULT_TAG_PATTERN = /^(.+?):\s*!vault\s*\|\s*$/;
+const BARE_VAULT_TAG_PATTERN = /^!vault\s*\|\s*$/;
+const VAULT_ENVELOPE_HEADER_PATTERN = /^\$ANSIBLE_VAULT;\d+\.\d+;[A-Za-z0-9_\-]+/;
+
+/**
+ * Parses text containing an Ansible Vault `!vault` YAML block — with an
+ * optional `name: !vault |` / bare `!vault |` wrapper and arbitrary
+ * indentation — back into the raw `$ANSIBLE_VAULT;...` envelope that
+ * `Vault#decryptSync` expects, plus the variable name if one was present.
+ *
+ * Accepts the block with or without the `!vault` wrapper, since a user might
+ * select just the envelope lines themselves.
+ */
+export function parseVaultBlock(text: string): ParsedVaultBlock {
+  const normalized = text.replace(/\r\n/g, '\n');
+  const rawLines = normalized.split('\n');
+
+  let start = 0;
+  let end = rawLines.length;
+  while (start < end && rawLines[start].trim() === '') {
+    start++;
+  }
+  while (end > start && rawLines[end - 1].trim() === '') {
+    end--;
+  }
+  const lines = rawLines.slice(start, end);
+
+  if (lines.length === 0) {
+    throw new Error('No content to decrypt.');
+  }
+
+  let variableName: string | undefined;
+  let bodyLines = lines;
+
+  const namedMatch = lines[0].match(NAMED_VAULT_TAG_PATTERN);
+  if (namedMatch) {
+    variableName = namedMatch[1].trim().replace(/^['"]|['"]$/g, '');
+    bodyLines = lines.slice(1);
+  } else if (BARE_VAULT_TAG_PATTERN.test(lines[0])) {
+    bodyLines = lines.slice(1);
+  }
+
+  const envelope = bodyLines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+
+  if (!VAULT_ENVELOPE_HEADER_PATTERN.test(envelope)) {
+    throw new Error('Selected text does not look like an Ansible Vault "!vault" block.');
+  }
+
+  return { variableName, envelope };
+}

@@ -2,7 +2,7 @@
   "name": "ansible-vault-rt",
   "displayName": "Ansible Vault RT",
   "description": "Real-time editing of Ansible Vault files in VS Code / Antigravity IDE",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "license": "MIT",
   "publisher": "AlexBerS",
   "repository": {
@@ -54,6 +54,16 @@
         "command": "ansible-vault-rt.rekeyFile",
         "title": "Ansible Vault RT: Rekey File",
         "icon": "$(key)"
+      },
+      {
+        "command": "ansible-vault-rt.encryptString",
+        "title": "Ansible Vault RT: Encrypt String",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "ansible-vault-rt.decryptString",
+        "title": "Ansible Vault RT: Decrypt String",
+        "icon": "$(unlock)"
       }
     ],
     "menus": {
@@ -88,6 +98,16 @@
         {
           "command": "ansible-vault-rt.rekeyFile",
           "when": "resourceScheme == file && ansibleVaultRt:isVaultFile",
+          "group": "1_modification"
+        },
+        {
+          "command": "ansible-vault-rt.encryptString",
+          "when": "editorHasSelection && !ansibleVaultRt:isVaultSelection",
+          "group": "1_modification"
+        },
+        {
+          "command": "ansible-vault-rt.decryptString",
+          "when": "editorHasSelection && ansibleVaultRt:isVaultSelection",
           "group": "1_modification"
         }
       ],

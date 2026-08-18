@@ -10,5 +10,6 @@ package-lock.json
 **/*.vsix
 test_ansible_vault.yaml
 test_ansible_vault_non_yaml.sh
+test_ansible_vault_encrypt_string.yaml
 **/.git/**
 **/.DS_Store

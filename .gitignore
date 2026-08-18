@@ -28,3 +28,4 @@ yarn-error.log*
 # Test files that may contain real vault data
 test_ansible_vault.yaml
 test_ansible_vault_non_yaml.sh
+test_ansible_vault_encrypt_string.yaml

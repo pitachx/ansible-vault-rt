@@ -4,6 +4,12 @@ All notable changes to the "Ansible Vault RT" extension are documented in this f
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-08-18
+
+### Added
+- **Encrypt String** command (`ansible-vault-rt.encryptString`): encrypts a string — the current editor selection, or a typed/pasted value — into a `name: !vault |` YAML block, the equivalent of `ansible-vault encrypt_string`. Reuses the saved project password when available, replaces the source selection (or inserts at the cursor / opens a new document) with the result, and also copies it to the clipboard. Available from the Editor Context Menu (when text is selected) and the Command Palette.
+- **Decrypt String** command (`ansible-vault-rt.decryptString`): decrypts a `name: !vault |` YAML block — the current editor selection, or a pasted value — back into plaintext, replacing the source selection (or inserting at the cursor / opening a new document) with the result. A single dialog collects the block and, when needed, the password: it reuses the saved project password with no extra prompt when available, and if that (or a manually entered password) turns out to be invalid, reveals a password field and shows an inline error for an immediate retry, rather than opening a second dialog. Available from the Editor Context Menu (only when the selection contains a `!vault` block) and the Command Palette.
+
 ## [0.3.1] - 2026-08-09
 
 ### Changed
