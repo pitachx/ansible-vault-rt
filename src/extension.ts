@@ -3,8 +3,60 @@ import * as fs from 'fs';
 import { Vault } from 'ansible-vault';
 import { VaultFileSystemProvider } from './vaultFileSystemProvider';
 import { PasswordManager } from './passwordManager';
-import { showPasswordDialog, showRekeyPasswordDialog } from './passwordDialog';
-import { isAnsibleVaultContent } from './vaultFileUtils';
+import { showPasswordDialog, showRekeyPasswordDialog, showEncryptStringDialog, showDecryptStringDialog } from './passwordDialog';
+import { isAnsibleVaultContent, containsVaultEnvelope, parseVaultBlock } from './vaultFileUtils';
+
+/**
+ * Resolves a live `TextEditor` for the given document URI, re-opening it if
+ * necessary. Used instead of reusing a `TextEditor` reference captured before
+ * showing a webview dialog: if that editor's tab was still a "preview" tab,
+ * opening the dialog panel in the same view column replaces (closes) it,
+ * which would make any edit against the stale reference throw.
+ */
+async function resolveEditorForEdit(sourceUri: vscode.Uri | undefined): Promise<vscode.TextEditor | undefined> {
+  if (!sourceUri) {
+    return undefined;
+  }
+
+  const existing = vscode.window.visibleTextEditors.find(
+    (editor) => editor.document.uri.toString() === sourceUri.toString()
+  );
+  if (existing) {
+    return existing;
+  }
+
+  const doc = await vscode.workspace.openTextDocument(sourceUri);
+  return vscode.window.showTextDocument(doc, { preview: false });
+}
+
+/**
+ * Applies `text` to the original source location: replacing `selection` if
+ * one was captured, inserting at `cursorPosition` otherwise, or opening a new
+ * untitled document if there was no source editor at all.
+ */
+async function applyResultToEditor(
+  sourceUri: vscode.Uri | undefined,
+  selection: vscode.Selection | undefined,
+  cursorPosition: vscode.Position | undefined,
+  text: string,
+  language: string
+): Promise<void> {
+  const targetEditor = await resolveEditorForEdit(sourceUri);
+
+  if (targetEditor && selection) {
+    await targetEditor.edit((editBuilder) => {
+      editBuilder.replace(selection, text);
+    });
+  } else if (targetEditor) {
+    const insertPosition = cursorPosition ?? targetEditor.selection.active;
+    await targetEditor.edit((editBuilder) => {
+      editBuilder.insert(insertPosition, text);
+    });
+  } else {
+    const doc = await vscode.workspace.openTextDocument({ content: text, language });
+    await vscode.window.showTextDocument(doc, { preview: false });
+  }
+}
 
 async function updateVaultFileContext(document?: vscode.TextDocument): Promise<void> {
   let isVaultFile = false;
@@ -19,6 +71,20 @@ async function updateVaultFileContext(document?: vscode.TextDocument): Promise<v
   }
 
   await vscode.commands.executeCommand('setContext', 'ansibleVaultRt:isVaultFile', isVaultFile);
+}
+
+async function updateVaultSelectionContext(editor?: vscode.TextEditor): Promise<void> {
+  let isVaultSelection = false;
+
+  if (editor && !editor.selection.isEmpty) {
+    try {
+      isVaultSelection = containsVaultEnvelope(editor.document.getText(editor.selection));
+    } catch {
+      isVaultSelection = false;
+    }
+  }
+
+  await vscode.commands.executeCommand('setContext', 'ansibleVaultRt:isVaultSelection', isVaultSelection);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -70,6 +136,33 @@ export function activate(context: vscode.ExtensionContext) {
 
   scheduleVaultFileContextRefresh(0);
   setTimeout(() => scheduleVaultFileContextRefresh(0), 500);
+
+  // Tracks whether the current selection looks like an Ansible Vault "!vault"
+  // block, so the "Decrypt String" context menu entry only shows up for
+  // selections that are actually decryptable, rather than for any selection.
+  let selectionDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const scheduleVaultSelectionContextRefresh = (delayMs = 50) => {
+    if (selectionDebounceTimer) {
+      clearTimeout(selectionDebounceTimer);
+    }
+    selectionDebounceTimer = setTimeout(() => {
+      selectionDebounceTimer = undefined;
+      void updateVaultSelectionContext(vscode.window.activeTextEditor);
+    }, delayMs);
+  };
+
+  context.subscriptions.push(
+    { dispose: () => { if (selectionDebounceTimer) { clearTimeout(selectionDebounceTimer); } } },
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      if (event.textEditor === vscode.window.activeTextEditor) {
+        scheduleVaultSelectionContextRefresh();
+      }
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => scheduleVaultSelectionContextRefresh())
+  );
+
+  scheduleVaultSelectionContextRefresh(0);
 
   // Register command to edit vault file
   const editVaultCommand = vscode.commands.registerCommand(
@@ -569,6 +662,151 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(rekeyFileCommand);
+
+  // Register command to encrypt an arbitrary string into an Ansible Vault
+  // "!vault" YAML block (the equivalent of `ansible-vault encrypt_string`).
+  const encryptStringCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.encryptString',
+    async () => {
+      try {
+        const activeEditor = vscode.window.activeTextEditor;
+        const sourceUri = activeEditor?.document.uri;
+        const selection = activeEditor && !activeEditor.selection.isEmpty
+          ? activeEditor.selection
+          : undefined;
+        const cursorPosition = activeEditor?.selection.active;
+        const initialPlaintext = selection ? activeEditor!.document.getText(selection) : '';
+
+        // Resolve a project context to look up/save a password, the same way
+        // the file-based commands do: prefer the active editor's URI, falling
+        // back to the first workspace folder.
+        const contextUri = sourceUri
+          ?? (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+            ? vscode.workspace.workspaceFolders[0].uri
+            : undefined);
+
+        const projectPath = contextUri ? passwordManager.getProjectPath(contextUri) : undefined;
+        const projectName = projectPath ? (projectPath.split(/[\\/]/).pop() || projectPath) : 'this workspace';
+
+        const savedPassword = projectPath ? await passwordManager.getSavedPassword(projectPath) : undefined;
+
+        const result = await showEncryptStringDialog(projectName, initialPlaintext, !!savedPassword);
+        if (!result) {
+          return; // User cancelled
+        }
+
+        const password = savedPassword ?? result.password;
+        if (!password) {
+          return;
+        }
+
+        const vault = new Vault({ password });
+        const encrypted = vault.encryptSync(result.plaintext);
+        const indented = encrypted.split('\n').map((line) => `          ${line}`).join('\n');
+        const variableName = result.variableName.trim();
+        const block = variableName ? `${variableName}: !vault |\n${indented}` : `!vault |\n${indented}`;
+
+        await applyResultToEditor(sourceUri, selection, cursorPosition, block, 'yaml');
+
+        await vscode.env.clipboard.writeText(block);
+
+        if (!savedPassword && result.remember && projectPath) {
+          await passwordManager.savePassword(projectPath, password);
+        }
+
+        vscode.window.showInformationMessage('Encrypted string has been copied to the clipboard.');
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`An error occurred while encrypting the string: ${err.message}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(encryptStringCommand);
+
+  // Register command to decrypt an Ansible Vault "!vault" YAML block back
+  // into plaintext. There is no `ansible-vault decrypt_string` CLI
+  // equivalent; this mirrors `encryptString` in reverse.
+  const decryptStringCommand = vscode.commands.registerCommand(
+    'ansible-vault-rt.decryptString',
+    async () => {
+      try {
+        const activeEditor = vscode.window.activeTextEditor;
+        const sourceUri = activeEditor?.document.uri;
+        const selection = activeEditor && !activeEditor.selection.isEmpty
+          ? activeEditor.selection
+          : undefined;
+        const cursorPosition = activeEditor?.selection.active;
+        const initialVaultText = selection ? activeEditor!.document.getText(selection) : '';
+
+        const contextUri = sourceUri
+          ?? (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+            ? vscode.workspace.workspaceFolders[0].uri
+            : undefined);
+
+        const projectPath = contextUri ? passwordManager.getProjectPath(contextUri) : undefined;
+        const projectName = projectPath ? (projectPath.split(/[\\/]/).pop() || projectPath) : 'this workspace';
+
+        const savedPassword = projectPath ? await passwordManager.getSavedPassword(projectPath) : undefined;
+
+        const dialogResult = await showDecryptStringDialog(
+          projectName,
+          initialVaultText,
+          !!savedPassword,
+          async (vaultText, password) => {
+            let parsed;
+            try {
+              parsed = parseVaultBlock(vaultText);
+            } catch (parseErr: any) {
+              return { success: false, errorMessage: parseErr.message };
+            }
+
+            const candidatePassword = password ?? savedPassword;
+            if (!candidatePassword) {
+              return { success: false, errorMessage: 'Password is required.', needsPassword: true };
+            }
+
+            try {
+              const vault = new Vault({ password: candidatePassword });
+              const plaintext = vault.decryptSync(parsed.envelope);
+              return { success: true, plaintext, variableName: parsed.variableName };
+            } catch {
+              const errorMessage = password
+                ? 'Invalid password or corrupted vault content. Please try again.'
+                : `Saved Ansible Vault password for project "${projectName}" is invalid. Please enter a different password.`;
+              return { success: false, errorMessage, needsPassword: true };
+            }
+          }
+        );
+
+        if (!dialogResult) {
+          return; // User cancelled
+        }
+
+        const isMultiline = dialogResult.plaintext.includes('\n');
+        let output: string;
+        if (!dialogResult.variableName) {
+          output = dialogResult.plaintext;
+        } else if (isMultiline) {
+          const indented = dialogResult.plaintext.split('\n').map((line) => `  ${line}`).join('\n');
+          output = `${dialogResult.variableName}: |\n${indented}`;
+        } else {
+          output = `${dialogResult.variableName}: ${dialogResult.plaintext}`;
+        }
+
+        await applyResultToEditor(sourceUri, selection, cursorPosition, output, 'yaml');
+
+        if (dialogResult.remember && dialogResult.password && projectPath) {
+          await passwordManager.savePassword(projectPath, dialogResult.password);
+        }
+
+        vscode.window.showInformationMessage('String decrypted.');
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`An error occurred while decrypting the string: ${err.message}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(decryptStringCommand);
 
   // Unregister documents from memory when their editor tabs are closed
   context.subscriptions.push(

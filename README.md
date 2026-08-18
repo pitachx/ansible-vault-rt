@@ -14,6 +14,7 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
   - Prompts to update or delete saved passwords if the stored password becomes invalid.
 - ⚡ **Multi-Location Menu Integration**: Easily trigger vault editing from editor title bar buttons, editor context menus, File Explorer context menus, or Command Palette.
 - 🔒 **One-Click Encrypt / Decrypt In Place**: Right-click any file to encrypt it, or any Vault file to decrypt it, directly on disk (no need to open it first).
+- 🛡️ **Encrypt / Decrypt String**: Turn a selected value into an Ansible Vault `!vault` YAML block ready to paste into a playbook, or paste an existing `!vault` block back into plaintext.
 
 ---
 
@@ -27,6 +28,8 @@ A VS Code / Antigravity IDE / Cursor extension for real-time decryption, in-edit
 | `ansible-vault-rt.encryptFile` | **Ansible Vault RT: Encrypt File**<br>Encrypts any plaintext file in place on disk with Ansible Vault, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
 | `ansible-vault-rt.decryptFile` | **Ansible Vault RT: Decrypt File**<br>Decrypts a Vault file in place on disk, permanently removing the encryption, after a confirmation prompt. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
 | `ansible-vault-rt.rekeyFile` | **Ansible Vault RT: Rekey File**<br>Changes the password of a Vault file in place on disk: decrypts it with the current password, then re-encrypts it with a new one. | • Editor Context Menu<br>• File Explorer Context Menu<br>• Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.encryptString` | **Ansible Vault RT: Encrypt String**<br>Encrypts a string (the current selection, or a typed/pasted value) into a `name: !vault \|` YAML block, the equivalent of `ansible-vault encrypt_string`. | • Editor Context Menu (with a non-encrypted selection)<br>• Command Palette (`Cmd+Shift+P`) |
+| `ansible-vault-rt.decryptString` | **Ansible Vault RT: Decrypt String**<br>Decrypts a `name: !vault \|` YAML block (the current selection, or a pasted value) back into plaintext. | • Editor Context Menu (with a selection containing a `!vault` block)<br>• Command Palette (`Cmd+Shift+P`) |
 
 ![Command Palette — Ansible Vault RT commands](docs/images/command-palette.png)
 
@@ -69,6 +72,23 @@ Unlike **Edit Vault File** (which keeps the file encrypted on disk and only decr
 4. Otherwise, a single dialog asks for both the **current** and **new** password together. If the current password is wrong, the same dialog stays open and shows an inline error so you can retry without reopening it.
 5. Optionally save the new password for the project (this overwrites any previously saved password).
 6. The file is re-encrypted with the new password and overwritten on disk.
+
+### 6. Encrypting a String
+Use this when you only need to encrypt a single value (e.g. a password variable), rather than an entire file:
+
+1. Either select the plaintext value in an editor and right-click it to choose **Ansible Vault RT: Encrypt String**, or run the command from the Command Palette with no selection.
+2. In the dialog, review/edit the string to encrypt, optionally give it a variable name (e.g. `db_password`), and enter a password if none is already saved for the project.
+3. Click **Encrypt**. The resulting `name: !vault |` block:
+   - Replaces the selection it was generated from, if any.
+   - Otherwise is inserted at the cursor in the active editor, or opened in a new untitled document if no editor is open.
+   - Is also copied to the clipboard.
+
+### 7. Decrypting a String
+The reverse of Encrypting a String — note `ansible-vault` itself has no `decrypt_string` CLI command, so this is a convenience feature of the extension:
+
+1. Select a `name: !vault |` block (or a bare `!vault |` block, with or without the surrounding indentation) and right-click it to choose **Ansible Vault RT: Decrypt String**, or run the command from the Command Palette and paste the block into the dialog.
+2. If a password is already saved for the project, it's used automatically — no password field is shown, and a single click on **Decrypt** is enough. Otherwise, enter the password in the same dialog. Either way, an invalid password shows an inline error and reveals a password field to retry with, without closing the dialog.
+3. The block is replaced with `name: <plaintext>` (or just the plaintext if the block had no variable name). Multiline secrets are inserted as a `name: |` block.
 
 ---
 
